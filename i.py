@@ -6,46 +6,46 @@ from pathlib import Path
 import math
 
 def rgb_to_ansi256(r, g, b):
-    """将RGB颜色转换为256色索引"""
+    """Convert RGB color to 256-color index"""
     if r == g == b:
-        # 灰度处理
+        # Grayscale processing
         if r < 8:
             return 16
         if r > 248:
             return 231
         return round((r - 8) / 247 * 24) + 232
     else:
-        # 彩色处理 - 改进的转换算法
+        # Color processing - improved conversion algorithm
         r = max(0, min(5, round(r / 51.0)))
         g = max(0, min(5, round(g / 51.0)))
         b = max(0, min(5, round(b / 51.0)))
         return 16 + 36 * r + 6 * g + b
 
 def ansi256_fg(color_index):
-    """返回256色前景色转义序列"""
+    """Return 256-color foreground escape sequence"""
     return f"\033[38;5;{color_index}m"
 
 def ansi256_bg(color_index):
-    """返回256色背景色转义序列"""
+    """Return 256-color background escape sequence"""
     return f"\033[48;5;{color_index}m"
 
 def ansi_reset():
-    """返回ANSI重置转义序列"""
+    """Return ANSI reset escape sequence"""
     return "\033[0m"
 
 def pixel_to_braille(blocks, avg_color):
     """
-    将2x4像素块转换为Braille字符
-    同时接收平均颜色用于着色
+    Convert 2x4 pixel block to Braille character
+    Also receives average color for coloring
     
-    Braille点阵布局 (0-7):
+    Braille dot layout (0-7):
     0 3
     1 4
     2 5
     6 7
     """
     if not blocks:
-        return chr(0x2800)  # 空白Braille字符
+        return chr(0x2800)  # Empty Braille character
     
     braille_code = 0
     positions = [0, 3, 1, 4, 2, 5, 6, 7]
@@ -55,17 +55,17 @@ def pixel_to_braille(blocks, avg_color):
             try:
                 if isinstance(blocks[i], (tuple, list)) and len(blocks[i]) == 3:
                     r, g, b = blocks[i]
-                    # 改进的亮度计算，考虑人眼对绿色的敏感性
+                    # Improved brightness calculation considering human eye sensitivity to green
                     brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                    if brightness > 128:  # 自适应阈值
-                        braille_code |= 1 << pos  # 修正：使用正确的位位置
+                    if brightness > 128:  # Adaptive threshold
+                        braille_code |= 1 << pos  # Fixed: use correct bit position
             except (ValueError, TypeError):
                 continue
     
     return chr(0x2800 + braille_code)
 
 def get_image_dimensions(image_path):
-    """获取图片尺寸"""
+    """Get image dimensions"""
     try:
         cmd = ["identify", "-format", "%w %h", str(image_path)]
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -77,32 +77,32 @@ def get_image_dimensions(image_path):
     return None, None
 
 def display_image_braille(image_path, width=80, use_bg=False, invert=False, dither=False):
-    """使用Braille字符显示图片（每个字符代表2x4像素）"""
+    """Display image using Braille characters (each character represents 2x4 pixels)"""
     path = Path(image_path)
     if not path.exists():
-        print(f"错误: 文件不存在 {image_path}")
+        print(f"Error: File does not exist {image_path}")
         return
     
-    # 获取原始尺寸
+    # Get original dimensions
     orig_width, orig_height = get_image_dimensions(image_path)
     if orig_width and orig_height:
-        print(f"原始尺寸: {orig_width}x{orig_height}")
+        print(f"Original dimensions: {orig_width}x{orig_height}")
     
     try:
-        # 计算最佳尺寸，保持宽高比
+        # Calculate optimal dimensions, maintaining aspect ratio
         pixel_width = width * 2
         
-        # 构建ImageMagick命令
+        # Build ImageMagick command
         cmd = ["convert", str(path)]
         
-        # 添加抖动选项
+        # Add dither option
         if dither:
             cmd.extend(["-dither", "FloydSteinberg"])
         
-        # 优化缩放参数
+        # Optimize scaling parameters
         cmd.extend([
             "-resize", f"{pixel_width}x",
-            "-unsharp", "0.5x0.5+0.5+0.008",  # 轻微锐化
+            "-unsharp", "0.5x0.5+0.5+0.008",  # Slight sharpening
             "-colorspace", "RGB",
             "txt:-"
         ])
@@ -110,10 +110,10 @@ def display_image_braille(image_path, width=80, use_bg=False, invert=False, dith
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            print(f"ImageMagick错误: {result.stderr}")
+            print(f"ImageMagick error: {result.stderr}")
             return
         
-        # 解析像素数据
+        # Parse pixel data
         pixels = {}
         current_x = 0
         current_y = 0
@@ -125,18 +125,18 @@ def display_image_braille(image_path, width=80, use_bg=False, invert=False, dith
             if not line or line.startswith("#"):
                 continue
             
-            # 更高效的解析
+            # More efficient parsing
             if ':' in line:
                 try:
                     pos_part, color_part = line.split(":", 1)
                     x_str, y_str = pos_part.split(",")
                     x, y = int(x_str), int(y_str)
                     
-                    # 更新最大坐标
+                    # Update maximum coordinates
                     max_x = max(max_x, x)
                     max_y = max(max_y, y)
                     
-                    # 提取RGB值 - 优化解析
+                    # Extract RGB values - optimized parsing
                     rgb_start = color_part.find("(")
                     rgb_end = color_part.find(")", rgb_start)
                     if rgb_start != -1 and rgb_end != -1:
@@ -161,27 +161,27 @@ def display_image_braille(image_path, width=80, use_bg=False, invert=False, dith
                     continue
         
         if not pixels:
-            print("错误: 无法解析像素数据")
+            print("Error: Unable to parse pixel data")
             return
         
-        # 计算字符网格尺寸
-        char_width = (max_x + 2) // 2  # 向上取整
-        char_height = (max_y + 4) // 4  # 向上取整
+        # Calculate character grid dimensions
+        char_width = (max_x + 2) // 2  # Round up
+        char_height = (max_y + 4) // 4  # Round up
         
-        print(f"显示图片: {path.name} ({max_x+1}x{max_y+1}) - 使用Braille字符")
-        print(f"字符尺寸: {char_width}x{char_height}")
+        print(f"Displaying image: {path.name} ({max_x+1}x{max_y+1}) - Using Braille characters")
+        print(f"Character dimensions: {char_width}x{char_height}")
         print("=" * min(80, char_width))
         
-        # 预计算颜色转换
+        # Pre-calculate color conversion
         color_cache = {}
         
-        # 显示图片，使用Braille字符
+        # Display image using Braille characters
         for char_y in range(char_height):
             line_chars = []
             line_colors = []
             
             for char_x in range(char_width):
-                # 收集2x4像素块
+                # Collect 2x4 pixel block
                 blocks = []
                 block_colors = []
                 
@@ -197,11 +197,11 @@ def display_image_braille(image_path, width=80, use_bg=False, invert=False, dith
                         else:
                             blocks.append(None)
                 
-                # 计算该块的平均颜色
+                # Calculate average color for this block
                 valid_colors = [c for c in block_colors if c is not None]
                 
                 if valid_colors:
-                    # 计算加权平均颜色
+                    # Calculate weighted average color
                     total_r = total_g = total_b = 0
                     for r, g, b in valid_colors:
                         total_r += r
@@ -212,25 +212,25 @@ def display_image_braille(image_path, width=80, use_bg=False, invert=False, dith
                     avg_g = total_g // len(valid_colors)
                     avg_b = total_b // len(valid_colors)
                     
-                    # 缓存颜色转换结果
+                    # Cache color conversion result
                     color_key = (avg_r, avg_g, avg_b)
                     if color_key not in color_cache:
                         color_cache[color_key] = rgb_to_ansi256(avg_r, avg_g, avg_b)
                     
                     color_index = color_cache[color_key]
                     
-                    # 生成Braille字符
+                    # Generate Braille character
                     braille_char = pixel_to_braille(blocks, (avg_r, avg_g, avg_b))
                     
-                    # 存储字符和颜色
+                    # Store character and color
                     line_chars.append(braille_char)
                     line_colors.append(color_index)
                 else:
-                    # 空白区域
+                    # Empty area
                     line_chars.append(" ")
                     line_colors.append(None)
             
-            # 构建输出行，优化颜色转义序列的使用
+            # Build output line, optimize use of color escape sequences
             output_line = ""
             last_color = None
             for char, color_idx in zip(line_chars, line_colors):
@@ -250,7 +250,7 @@ def display_image_braille(image_path, width=80, use_bg=False, invert=False, dith
                         last_color = None
                     output_line += char
             
-            # 行结束重置颜色
+            # Reset color at end of line
             if last_color is not None:
                 output_line += ansi_reset()
             
@@ -259,43 +259,43 @@ def display_image_braille(image_path, width=80, use_bg=False, invert=False, dith
         print("=" * min(80, char_width))
         
     except Exception as e:
-        print(f"错误: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
 
 def main():
     parser = argparse.ArgumentParser(
-        description="在终端显示图片（Braille字符版） - 高分辨率优化版",
+        description="Display images in terminal (Braille character version) - High resolution optimized",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
-  %(prog)s image.jpg -w 100      # 宽度100字符显示
-  %(prog)s image.png -b -i       # 背景色模式，反色显示
-  %(prog)s image.gif -d          # 使用抖动提高质量
-  %(prog)s --test                # 测试256色支持
+Examples:
+  %(prog)s image.jpg -w 100      # Display with 100 character width
+  %(prog)s image.png -b -i       # Background color mode, invert colors
+  %(prog)s image.gif -d          # Use dithering for better quality
+  %(prog)s --test                # Test 256-color support
         """
     )
     
-    parser.add_argument("image", nargs="?", help="图片文件路径")
+    parser.add_argument("image", nargs="?", help="Image file path")
     parser.add_argument("-w", "--width", type=int, default=80, 
-                       help="显示宽度（字符数，默认80）")
+                       help="Display width (in characters, default 80)")
     parser.add_argument("-b", "--bg", action="store_true", 
-                       help="使用背景色模式（更清晰但可能有闪烁）")
+                       help="Use background color mode (clearer but may flicker)")
     parser.add_argument("-i", "--invert", action="store_true", 
-                       help="反色显示")
+                       help="Invert colors")
     parser.add_argument("-d", "--dither", action="store_true",
-                       help="使用Floyd-Steinberg抖动提高色彩质量")
+                       help="Use Floyd-Steinberg dithering for better color quality")
     parser.add_argument("-t", "--test", action="store_true", 
-                       help="测试256色支持")
+                       help="Test 256-color support")
     
     args = parser.parse_args()
     
     if args.test:
-        # 增强的256色测试
-        print("256色终端支持测试")
+        # Enhanced 256-color test
+        print("256-color Terminal Support Test")
         print("=" * 60)
         
-        print("\n1. 系统颜色 (0-15):")
+        print("\n1. System colors (0-15):")
         for i in range(8):
             print(f"\033[48;5;{i}m   \033[0m", end="")
         print()
@@ -303,8 +303,8 @@ def main():
             print(f"\033[48;5;{i}m   \033[0m", end="")
         print()
         
-        print("\n2. 216色立方 (16-231):")
-        print("R轴 → , G轴 ↓ , B轴 每行变化")
+        print("\n2. 216-color cube (16-231):")
+        print("R-axis → , G-axis ↓ , B-axis changes per line")
         for g in range(6):
             for r in range(6):
                 line = ""
@@ -313,24 +313,24 @@ def main():
                     line += f"\033[48;5;{code}m  \033[0m"
                 print(f"R{r}G{g}: {line}")
         
-        print("\n3. 灰度渐变 (232-255):")
+        print("\n3. Grayscale gradient (232-255):")
         grayscale = ""
         for i in range(232, 256):
             grayscale += f"\033[48;5;{i}m  \033[0m"
         print(grayscale)
         
-        print("\n4. Braille字符测试:")
+        print("\n4. Braille character test:")
         for i in range(0x2800, 0x2820):
             print(chr(i), end=" " if (i - 0x2800) % 16 != 15 else "\n")
         
-        print("\n5. 颜色精度测试:")
+        print("\n5. Color accuracy test:")
         test_colors = [
-            (255, 0, 0),    # 红
-            (0, 255, 0),    # 绿
-            (0, 0, 255),    # 蓝
-            (255, 255, 0),  # 黄
-            (255, 0, 255),  # 紫
-            (0, 255, 255),  # 青
+            (255, 0, 0),    # Red
+            (0, 255, 0),    # Green
+            (0, 0, 255),    # Blue
+            (255, 255, 0),  # Yellow
+            (255, 0, 255),  # Magenta
+            (0, 255, 255),  # Cyan
         ]
         for r, g, b in test_colors:
             idx = rgb_to_ansi256(r, g, b)
